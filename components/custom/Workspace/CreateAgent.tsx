@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-
+import axios from "axios";
 const botDesigns = ["market-scout", "research-orbit", "studio-spark", "signal-guide", "growth-pilot"]
 
 const botImage = (seed: string) =>
@@ -19,11 +19,28 @@ export function CreateAgent() {
   const [designIndex, setDesignIndex] = useState(0)
   const selectedDesign = botDesigns[designIndex]
 
-  const saveAgent = (event: any) => {
-    event.preventDefault()
-    console.log(name, instructions, designIndex)
-    if (!name.trim()) return
-    router.push("/workspace")
+  const saveAgent = async (event: any) => {
+    try {
+      event.preventDefault()
+      console.log(name, instructions, designIndex, botImage(botDesigns[designIndex]))
+      if (!name.trim()) return
+      const result = await axios.post("/api/agent", {
+        agentId: crypto.randomUUID(),
+        name: name,
+        description: instructions,
+        agentImage: botImage(botDesigns[designIndex]),
+      })
+
+      if (result) {
+        console.log("the bot is created ", result);
+        router.push('/workspace')
+      }
+    } catch (error) {
+      console.log("the error is", error);
+    }
+
+    console.log("")
+
   }
 
   return (
