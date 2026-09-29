@@ -1,29 +1,44 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Bot, Compass, Plus, Sparkles } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-
+import { useSession } from "next-auth/react"
+import axios from "axios"
 type Agent = {
   name: string
   role: string
-  seed: string
+  agentImage: string
 }
 
-const agents: Agent[] = [
-  { name: "Nova", role: "Market analysis", seed: "market-nova" },
-  { name: "Atlas", role: "Growth strategy", seed: "growth-atlas" },
-  { name: "Mira", role: "Content planning", seed: "content-mira" },
-]
 
 const botImage = (seed: string) =>
   `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${seed}&backgroundColor=f5f5f4,e0f2fe,dcfce7,fae8ff&radius=50`
 
 export function AppSidebar() {
   const [activeAgent, setActiveAgent] = useState("Nova")
+  const [agents, setAgents] = useState<Agent[]>([])
+  const agendata = async () => {
+    try {
+      const res = await axios.get("/api/agent")
+      console.log("the res is", res.data);
 
+      if (res.status === 200) {
+        setAgents(res.data)
+      }
+    } catch (error) {
+      console.log("error", error)
+    }
+  }
+  useEffect(() => {
+    agendata()
+  }, [])
+  const user = useSession()
+  useEffect(() => {
+    console.log("appsidebar", user)
+  }, [user])
   return (
     <aside className="flex h-dvh w-[17.5rem] shrink-0 flex-col border-r border-zinc-200 bg-white px-3 py-4 text-zinc-900">
       <div className="flex items-center gap-2.5 px-2">
@@ -46,14 +61,13 @@ export function AppSidebar() {
             return (
               <button
                 key={agent.name}
-                className={`flex h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${
-                  isActive ? "bg-zinc-100 text-zinc-950" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
-                }`}
+                className={`flex h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${isActive ? "bg-zinc-100 text-zinc-950" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
+                  }`}
                 onClick={() => setActiveAgent(agent.name)}
                 type="button"
               >
                 <Avatar className="size-8" size="sm">
-                  <AvatarImage alt="" src={botImage(agent.seed)} />
+                  <AvatarImage alt="" src={agent.agentImage} />
                   <AvatarFallback className="bg-zinc-200 text-zinc-600"><Bot className="size-4" /></AvatarFallback>
                 </Avatar>
                 <span className="min-w-0 flex-1">
