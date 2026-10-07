@@ -111,20 +111,31 @@ export async function queryPinecone({
     vector,
     topK = 5,
     namespace,
+    agentId,
 }: {
     vector: number[];
     topK?: number;
     namespace?: string;
+    agentId?: string;
 }): Promise<KnowledgeChunk[]> {
     try {
         const index = getIndex();
 
-        const result = await index.query({
+        const queryParams: any = {
             vector,
             topK,
             includeMetadata: true,
-            namespace,
-        });
+        };
+        if (namespace) queryParams.namespace = namespace;
+        if (agentId) queryParams.filter = { agentId: { $eq: agentId } };
+
+        let result = await index.query(queryParams);
+
+        // Fallback: If agentId filter yielded 0 results, query globally without filter
+        if ((!result.matches || result.matches.length === 0) && agentId) {
+            delete queryParams.filter;
+            result = await index.query(queryParams);
+        }
 
         return (result.matches || []).map((match) => ({
             id: match.id,

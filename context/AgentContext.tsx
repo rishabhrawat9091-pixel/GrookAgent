@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, ReactNode, useContext, useEffect, useState, useCallback } from "react"
+import { useSession } from "next-auth/react"
 
 export type Agent = {
   id: string
@@ -21,19 +22,16 @@ type AgentContextValue = {
 
 const AgentContext = createContext<AgentContextValue | null>(null)
 
-
 export function AgentProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([])
-  const [agentid, setAgentid] = useState<string>();
-  useEffect(() => {
-    console.log(agents)
-  }, [agents])
+  const [agentid, setAgentid] = useState<string>()
+  const { status } = useSession()
 
   const clickAgent = async (agentid: string) => {
     try {
-      setAgentid(agentid);
+      setAgentid(agentid)
     } catch (error) {
-      console.log(error);
+      console.log(error)
     }
   }
 
@@ -51,9 +49,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Only fetch agents once the NextAuth session is confirmed authenticated.
+  // Without this, the very first fetch fires before the session cookie is ready
+  // and the /api/agent route returns 401 → sidebar stays empty forever.
   useEffect(() => {
-    void refreshAgents()
-  }, [refreshAgents])
+    if (status === "authenticated") {
+      void refreshAgents()
+    }
+  }, [status, refreshAgents])
 
   const updateAgent = useCallback((updatedAgent: Partial<Agent> & { id: string }) => {
     setAgents((current) => {

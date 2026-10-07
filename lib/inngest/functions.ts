@@ -131,3 +131,139 @@ export const onDemandInboxPollJob = inngest.createFunction(
     return { success: true, agentId, ...result };
   }
 );
+
+/**
+ * Weekly Market Digest — runs every Monday at 09:00 UTC
+ * Queries Pinecone for the latest market knowledge, generates a market
+ * analysis summary via the Ollama market-analyst model, and saves it
+ * as a notification on every admin-owned agent so admins see it in inbox.
+ */
+export const weeklyMarketDigestJob = inngest.createFunction(
+  {
+    id: "weekly-market-digest",
+    name: "Weekly Market Intelligence Digest",
+    retries: 2,
+  },
+  { cron: "0 9 * * 1" }, // Every Monday at 09:00 UTC
+  async ({ step }) => {
+    // Step 1: Pull latest market knowledge from Pinecone
+    const marketContext = await step.run("fetch-pinecone-market-data", async () => {
+      try {
+        const pineconeConfigured =
+          process.env.PINECONE_API_KEY &&
+          process.env.PINECONE_API_KEY !== "your_pinecone_api_key" &&
+          process.env.PINECONE_INDEX_NAME &&
+          process.env.HUGGINGFACE_API_KEY &&
+          process.env.HUGGINGFACE_API_KEY !== "your_huggingface_api_key";
+
+        if (!pineconeConfigured) {
+          return { text: "", skipped: true };
+        }
+
+        const { embedding } = await import("@/app/api/documentprocess/embeddings/embedded");
+        const { queryPinecone } = await import("@/app/api/documentprocess/vectordb/pineconedb");
+
+        // Query with a broad market intelligence prompt
+        const queryVectors = await embedding({ chunks: ["latest market trends industry analysis competitive intelligence weekly update"] });
+        if (!queryVectors[0]?.length) return { text: "", skipped: true };
+
+        const chunks = await queryPinecone({ vector: queryVectors[0], topK: 8 });
+        const text = chunks
+          .filter((c) => c.text?.trim())
+          .map((c, i) => `[Source ${i + 1}]: ${c.text.trim()}`)
+          .join("\n\n");
+
+        return { text, skipped: false };
+      } catch (err: any) {
+        console.error("[weekly-digest] Pinecone fetch error:", err?.message);
+        return { text: "", skipped: true };
+      }
+    });
+
+    if (marketContext.skipped || !marketContext.text) {
+      return { success: true, message: "No Pinecone data available — digest skipped." };
+    }
+
+    // Step 2: Generate analysis via Ollama market-analyst model
+    const digestContent = await step.run("generate-market-analysis", async () => {
+      const { marketAnalystPrompt } = await import("@/app/api/chat/prompt/market");
+      const axios = (await import("axios")).default;
+
+      const systemPrompt = `${marketAnalystPrompt}\n\n## WEEKLY DIGEST MODE\nYou are generating the Weekly Market Intelligence Digest. Analyze the following knowledge base data and produce a structured, executive-level market analysis report. Include: key trends, opportunities, risks, and actionable recommendations. Be concise and data-driven.`;
+
+      const messages = [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `Generate the weekly market digest based on this data:\n\n${marketContext.text}`,
+        },
+      ];
+
+      try {
+        const response = await axios.post(
+          "http://127.0.0.1:11434/api/chat",
+          { model: "qwen3:4b", messages, stream: false, think: false },
+          { timeout: 120000 }
+        );
+        let content = response.data?.message?.content || "";
+        // Strip <think> blocks
+        content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+        return content || "Weekly digest generation returned no content.";
+      } catch (err: any) {
+        return `Weekly digest unavailable: ${err?.message || "Ollama connection error"}`;
+      }
+    });
+
+    // Step 3: Save digest as notification on each admin agent
+    const saved = await step.run("save-digest-notifications", async () => {
+      const { db } = await import("@/db");
+      const { agents, users, agentNotifications } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+
+      // Find all admin users
+      const admins = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.role, "admin"));
+
+      if (admins.length === 0) return { count: 0 };
+
+      const adminEmails = admins.map((a) => a.email);
+
+      // Find agents owned by admins
+      let savedCount = 0;
+      for (const email of adminEmails) {
+        const adminAgents = await db
+          .select()
+          .from(agents)
+          .where(eq(agents.userEmail, email));
+
+        for (const agent of adminAgents) {
+          try {
+            await db.insert(agentNotifications).values({
+              agentId: agent.id,
+              type: "generic",
+              title: `Weekly Market Digest — ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`,
+              body: digestContent,
+              source: "Market Intelligence",
+              isRead: "false",
+            });
+            savedCount++;
+          } catch (err) {
+            console.error(`[weekly-digest] Failed to save notification for agent ${agent.id}:`, err);
+          }
+        }
+      }
+
+      return { count: savedCount };
+    });
+
+    return {
+      success: true,
+      digestLength: digestContent.length,
+      notificationsSaved: saved.count,
+      message: `Weekly market digest generated and delivered to ${saved.count} agent(s).`,
+    };
+  }
+);
+

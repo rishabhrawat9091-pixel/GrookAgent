@@ -13,6 +13,10 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: text("name"),
   email: text("email").notNull().unique(),
+  password: text("password"),
+  role: text("role").default("employee").notNull(), // 'admin' | 'employee'
+  department: text("department").default("General"),
+  salary: integer("salary").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   credits: integer("credits").default(5),
 });
@@ -91,6 +95,28 @@ export const agentNotifications = pgTable("agent_notifications", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Bot Chat History ────────────────────────────────────────────────────────
+export const agentChats = pgTable("agent_chats", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: text("agent_id").notNull(),
+  userEmail: text("user_email").notNull(),
+  sender: text("sender").notNull(), // 'user' | 'agent'
+  text: text("text").notNull(),
+  toolsExecuted: jsonb("tools_executed"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Bot Vector Knowledge Documents ─────────────────────────────────────────
+export const agentDocuments = pgTable("agent_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: text("agent_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").default("pdf"),
+  chunksCount: integer("chunks_count").default(0),
+  status: text("status").default("indexed").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
@@ -102,3 +128,9 @@ export type NewAgentConnector = typeof agentConnectors.$inferInsert;
 
 export type AgentNotification = typeof agentNotifications.$inferSelect;
 export type NewAgentNotification = typeof agentNotifications.$inferInsert;
+
+export type AgentChat = typeof agentChats.$inferSelect;
+export type NewAgentChat = typeof agentChats.$inferInsert;
+
+export type AgentDocument = typeof agentDocuments.$inferSelect;
+export type NewAgentDocument = typeof agentDocuments.$inferInsert;

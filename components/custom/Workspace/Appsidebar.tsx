@@ -5,17 +5,30 @@ import { Bot, Compass, Plus, Sparkles, X } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useParams, useRouter } from "next/navigation"
 import { useAgents } from "@/context/AgentContext"
+import { useSession } from "next-auth/react"
+import { useEffect, useState } from "react"
 
 type AppSidebarProps = {
   onClose?: () => void
   isMobile?: boolean
+  role?: string
 }
 
 export function AppSidebar({ onClose, isMobile }: AppSidebarProps) {
   const router = useRouter()
   const params = useParams()
+  const [toggler, Settoggler] = useState<boolean>(true)
   const currentAgentId = params?.agentId as string | undefined
   const { agents } = useAgents()
+  const { data: session } = useSession()
+
+  useEffect(() => {
+    if (session?.user?.role === "employee") {
+      Settoggler(false)
+    } else {
+      Settoggler(true)
+    }
+  }, [session])
 
   return (
     <aside
@@ -44,14 +57,16 @@ export function AppSidebar({ onClose, isMobile }: AppSidebarProps) {
         )}
       </div>
 
-      <Link
-        href="/workspace/create-agent"
-        onClick={() => onClose?.()}
-        className="mt-7 flex h-10 w-full items-center gap-2 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
-      >
-        <Plus className="size-4" strokeWidth={2.5} />
-        Create New Agent
-      </Link>
+      {toggler && (
+        <Link
+          href="/workspace/create-agent"
+          onClick={() => onClose?.()}
+          className="mt-7 flex h-10 w-full items-center gap-2 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        >
+          <Plus className="size-4" strokeWidth={2.5} />
+          Create New Agent
+        </Link>
+      )}
 
       <div className="mt-8 min-h-0 overflow-y-auto">
         <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Your Agents</p>
@@ -96,12 +111,12 @@ export function AppSidebar({ onClose, isMobile }: AppSidebarProps) {
         </button>
         <button className="mt-2 flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400" type="button">
           <Avatar className="size-8">
-            <AvatarImage alt="Avery Stone" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=96&q=80" />
+            <AvatarImage alt="User" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=96&q=80" />
             <AvatarFallback className="bg-zinc-900 font-semibold text-white">AS</AvatarFallback>
           </Avatar>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium text-zinc-800">Avery Stone</span>
-            <span className="block truncate text-xs text-zinc-400">Personal workspace</span>
+            <span className="block truncate text-sm font-medium text-zinc-800">{session?.user?.name || "Workspace User"}</span>
+            <span className="block truncate text-xs text-zinc-400">{session?.user?.email || "Personal workspace"}</span>
           </span>
         </button>
       </div>

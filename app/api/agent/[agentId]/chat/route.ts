@@ -35,7 +35,7 @@ export async function POST(
   const [agent] = await db
     .select()
     .from(agents)
-    .where(and(eq(agents.id, agentId), eq(agents.userEmail, session.user.email)))
+    .where(eq(agents.id, agentId))
 
   if (!agent) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 })

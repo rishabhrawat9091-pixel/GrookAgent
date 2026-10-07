@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState, KeyboardEvent } from "react"
 import {
   ArrowLeft, Bell, Bot, Check, Mail, MoreHorizontal, PanelLeft,
-  Paperclip, RefreshCw, SendHorizontal, SlidersHorizontal, Sparkles, X,
+  Paperclip, RefreshCw, SendHorizontal, SlidersHorizontal, Sparkles, Trash2, X,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import axios from "axios"
@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Agent } from "@/context/AgentContext"
+import { generateAgentIntro } from "@/lib/agentIntro"
 
 type AgentChatPanelProps = {
   agent: Agent | null
@@ -21,7 +22,7 @@ type AgentChatPanelProps = {
 }
 
 type ChatMessage = {
-  id: number
+  id: number | string
   author: "agent" | "user"
   text: string
   toolsExecuted?: string[]
@@ -38,7 +39,58 @@ type Notification = {
   createdAt: string
 }
 
-const QUICK_PROMPTS = [
+function formatInline(str: string) {
+  const parts = str.split(/(\*\*[^*]+\*\*)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-semibold text-zinc-900">
+          {part.slice(2, -2)}
+        </strong>
+      )
+    }
+    return part
+  })
+}
+
+function FormattedMessageText({ text }: { text: string }) {
+  const lines = text.split("\n")
+  return (
+    <div className="space-y-1.5 leading-relaxed">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim()
+        if (!trimmed) {
+          return <div key={idx} className="h-1.5" />
+        }
+
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h4 key={idx} className="font-semibold text-xs sm:text-sm text-zinc-900 mt-2">
+              {formatInline(trimmed.slice(4))}
+            </h4>
+          )
+        }
+
+        if (trimmed.startsWith("• ") || trimmed.startsWith("- ")) {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1 text-xs sm:text-sm">
+              <span className="text-teal-600 mt-0.5 font-bold select-none">•</span>
+              <span className="flex-1">{formatInline(trimmed.slice(2))}</span>
+            </div>
+          )
+        }
+
+        return (
+          <p key={idx} className="text-xs sm:text-sm">
+            {formatInline(line)}
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
+const DEFAULT_QUICK_PROMPTS = [
   "What can you help me with?",
   "Give me a quick summary",
   "Draft an email update",
@@ -50,7 +102,10 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
   const [isActive, setIsActive] = useState(true)
   const [draft, setDraft] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const [isBotTypingIntro, setIsBotTypingIntro] = useState(false)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(DEFAULT_QUICK_PROMPTS)
 
   // Notifications state
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -61,12 +116,137 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const effectiveAgentId = agentId || agent?.id
+  const autoIntroFiredRef = useRef<string | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isSending])
+  }, [messages, isSending, isBotTypingIntro])
+
+  // Automatically trigger the first introductory chat explaining functionality
+  const triggerAutoIntroduction = async (force = false) => {
+    if (!effectiveAgentId) return
+    if (!force && autoIntroFiredRef.current === effectiveAgentId) return
+    autoIntroFiredRef.current = effectiveAgentId
+
+    setIsBotTypingIntro(true)
+
+    // Brief realistic typing pause so user experiences the bot welcoming them
+    await new Promise((resolve) => setTimeout(resolve, 600))
+
+    try {
+      const res = await axios.post("/api/chat/intro", {
+        agentId: effectiveAgentId,
+        force,
+      })
+
+      if (res.data?.success && res.data?.message) {
+        const welcomeMessage: ChatMessage = {
+          id: res.data.message.id || Date.now(),
+          author: "agent",
+          text: res.data.message.text,
+        }
+        setMessages([welcomeMessage])
+        if (Array.isArray(res.data.suggestedPrompts) && res.data.suggestedPrompts.length > 0) {
+          setSuggestedPrompts(res.data.suggestedPrompts)
+        }
+        try {
+          localStorage.setItem(`chat_history_${effectiveAgentId}`, JSON.stringify([welcomeMessage]))
+        } catch {}
+        setIsBotTypingIntro(false)
+        return
+      }
+    } catch (err) {
+      console.warn("Auto-intro API call failed, generating fallback intro:", err)
+    }
+
+    // Client-side fallback intro
+    const localIntro = generateAgentIntro(agent)
+    const fallbackMessage: ChatMessage = {
+      id: Date.now(),
+      author: "agent",
+      text: localIntro.text,
+    }
+    setMessages([fallbackMessage])
+    setSuggestedPrompts(localIntro.prompts)
+    try {
+      localStorage.setItem(`chat_history_${effectiveAgentId}`, JSON.stringify([fallbackMessage]))
+    } catch {}
+    setIsBotTypingIntro(false)
+  }
+
+  // Load persistent chat history from DB + localStorage cache
+  useEffect(() => {
+    if (!effectiveAgentId) return
+
+    let isMounted = true
+
+    // 1. Instant restore from localStorage cache
+    try {
+      const cached = localStorage.getItem(`chat_history_${effectiveAgentId}`)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed)
+          autoIntroFiredRef.current = effectiveAgentId
+        }
+      }
+    } catch {}
+
+    // 2. Fetch authoritative chat history from DB
+    const loadChatHistory = async () => {
+      try {
+        setIsLoadingHistory(true)
+        const res = await axios.get(`/api/chat?agentId=${encodeURIComponent(effectiveAgentId)}`)
+        if (!isMounted) return
+        const history: ChatMessage[] = res.data?.messages || []
+
+        if (history.length > 0) {
+          setMessages(history)
+          autoIntroFiredRef.current = effectiveAgentId
+          try {
+            localStorage.setItem(`chat_history_${effectiveAgentId}`, JSON.stringify(history))
+          } catch {}
+        } else {
+          // If no messages exist for this bot, automatically send the first introductory chat!
+          await triggerAutoIntroduction()
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err)
+        // If empty and failed to fetch, still trigger the welcome message
+        if (messages.length === 0) {
+          await triggerAutoIntroduction()
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingHistory(false)
+          setIsBotTypingIntro(false)
+        }
+      }
+    }
+
+    void loadChatHistory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [effectiveAgentId])
+
+  const clearChatHistory = async () => {
+    if (!effectiveAgentId || !confirm("Are you sure you want to clear chat history with this bot?")) return
+    try {
+      await axios.delete(`/api/chat?agentId=${encodeURIComponent(effectiveAgentId)}`)
+      setMessages([])
+      try {
+        localStorage.removeItem(`chat_history_${effectiveAgentId}`)
+      } catch {}
+      // Automatically re-introduce fresh
+      await triggerAutoIntroduction(true)
+    } catch (err) {
+      console.error("Failed to clear chat history:", err)
+    }
+  }
 
   // Load notifications on mount and every 60s
   useEffect(() => {
@@ -144,13 +324,15 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
 
     setDraft("")
     setMessages(conversation)
+    try {
+      localStorage.setItem(`chat_history_${effectiveAgentId}`, JSON.stringify(conversation))
+    } catch {}
     setIsSending(true)
 
     try {
       const response = await axios.post("/api/chat", {
         message,
         agentId: effectiveAgentId,
-        role: "market-analyst",
         messages: conversation.map((item) => ({
           role: item.author === "agent" ? "assistant" : "user",
           content: item.text,
@@ -166,15 +348,19 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
         throw new Error(response.data?.error || "Received empty response from assistant")
       }
 
-      setMessages((current) => [
-        ...current,
+      const updatedConversation: ChatMessage[] = [
+        ...conversation,
         {
           id: Date.now() + 1,
           author: "agent",
           text: responseMessage,
           toolsExecuted: response.data?.toolsExecuted,
         },
-      ])
+      ]
+      setMessages(updatedConversation)
+      try {
+        localStorage.setItem(`chat_history_${effectiveAgentId}`, JSON.stringify(updatedConversation))
+      } catch {}
 
       // Refresh notifications after agent response (it may have sent emails)
       if (response.data?.toolsExecuted?.length > 0) {
@@ -250,7 +436,20 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
         </div>
 
         {/* Header Actions */}
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Clear Chat Button */}
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={clearChatHistory}
+              className="flex size-8 sm:size-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-rose-50 hover:text-rose-600"
+              title="Clear chat history"
+              aria-label="Clear chat history"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
+
           {onOpenConfig && (
             <button
               onClick={onOpenConfig}
@@ -432,7 +631,7 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
             className="flex-1 space-y-4 sm:space-y-5 overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            {messages.length === 0 && (
+            {messages.length === 0 && !isBotTypingIntro && (
               <div className="flex h-full flex-col items-center justify-center gap-4 py-8 sm:py-16 text-center px-2">
                 <div className="relative">
                   <div className="flex size-14 sm:size-16 items-center justify-center rounded-2xl bg-teal-50 border border-teal-100 text-teal-700 shadow-xs">
@@ -452,7 +651,7 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
                 </div>
 
                 <div className="mt-2 flex flex-wrap justify-center gap-1.5 sm:gap-2 max-w-md">
-                  {QUICK_PROMPTS.map((prompt) => (
+                  {suggestedPrompts.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"
@@ -466,7 +665,7 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
               </div>
             )}
 
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <div
                 className={`flex gap-2.5 sm:gap-3 ${message.author === "user" ? "justify-end" : "justify-start"}`}
                 key={message.id}
@@ -478,7 +677,7 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
                   </Avatar>
                 )}
 
-                <div className="flex flex-col gap-1.5 max-w-[85%] sm:max-w-[78%]">
+                <div className="flex flex-col gap-1.5 max-w-[85%] sm:max-w-[82%]">
                   {/* Tool execution badges */}
                   {message.toolsExecuted && message.toolsExecuted.length > 0 && (
                     <div className="flex flex-wrap gap-1">
@@ -494,27 +693,55 @@ export function AgentChatPanel({ agent, agentId, onOpenSidebar, onOpenConfig }: 
                     </div>
                   )}
                   <div
-                    className={`rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-5 sm:leading-6 shadow-2xs break-words whitespace-pre-wrap ${message.author === "user"
-                      ? "rounded-tr-xs bg-zinc-900 text-white"
+                    className={`rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-5 sm:leading-6 shadow-2xs break-words ${message.author === "user"
+                      ? "rounded-tr-xs bg-zinc-900 text-white whitespace-pre-wrap"
                       : "rounded-tl-xs border border-zinc-200/90 bg-white text-zinc-800"
                     }`}
                   >
-                    {message.text}
+                    {message.author === "agent" ? (
+                      <FormattedMessageText text={message.text} />
+                    ) : (
+                      message.text
+                    )}
                   </div>
+
+                  {/* Suggestion prompt chips on the first intro message */}
+                  {message.author === "agent" && index === 0 && suggestedPrompts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
+                      {suggestedPrompts.map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          disabled={isSending || isBotTypingIntro}
+                          onClick={() => void submitMessage(prompt)}
+                          className="rounded-full border border-teal-200/80 bg-teal-50/70 px-3 py-1.5 text-[11px] sm:text-xs font-medium text-teal-800 transition hover:bg-teal-100 hover:border-teal-400 hover:text-teal-950 active:scale-95 shadow-2xs text-left"
+                        >
+                          ✨ {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
 
-            {isSending && (
-              <div className="flex gap-2.5 sm:gap-3 items-center">
+            {(isSending || isBotTypingIntro) && (
+              <div className="flex gap-2.5 sm:gap-3 items-center animate-in fade-in duration-200">
                 <Avatar className="mt-0.5 size-7 shrink-0 border border-zinc-200/70" size="sm">
                   <AvatarImage alt={agent?.name ?? "Agent"} src={agent?.agentImage} />
                   <AvatarFallback><Bot className="size-3.5" /></AvatarFallback>
                 </Avatar>
-                <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-xs border border-zinc-200/90 bg-white px-3.5 py-2.5 shadow-2xs">
-                  <span className="size-1.5 animate-bounce rounded-full bg-teal-600" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-teal-600 [animation-delay:150ms]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-teal-600 [animation-delay:300ms]" />
+                <div className="flex items-center gap-2 rounded-2xl rounded-tl-xs border border-zinc-200/90 bg-white px-3.5 py-2.5 shadow-2xs">
+                  <div className="flex items-center gap-1">
+                    <span className="size-1.5 animate-bounce rounded-full bg-teal-600" />
+                    <span className="size-1.5 animate-bounce rounded-full bg-teal-600 [animation-delay:150ms]" />
+                    <span className="size-1.5 animate-bounce rounded-full bg-teal-600 [animation-delay:300ms]" />
+                  </div>
+                  {isBotTypingIntro && (
+                    <span className="text-[11px] font-medium text-zinc-500">
+                      {agent?.name ?? "Agent"} is introducing itself...
+                    </span>
+                  )}
                 </div>
               </div>
             )}
