@@ -119,45 +119,6 @@ export default function WorkspacePage() {
 
       {/* Main Content Area */}
       <section className="flex-1 overflow-y-auto px-4 py-8 sm:px-8 max-w-6xl mx-auto w-full space-y-8">
-        {/* Your Active Bots Banner (if any) */}
-        {agents.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                Your Active Bots ({agents.length})
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  onClick={() => router.push(`/workspace/agent/${agent.id}`)}
-                  className="group flex cursor-pointer items-center justify-between rounded-xl border border-zinc-200 bg-white p-3.5 shadow-2xs transition hover:border-teal-500 hover:shadow-xs"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={agent.agentImage || "https://api.dicebear.com/9.x/bottts-neutral/svg?seed=default"}
-                      alt={agent.name}
-                      className="size-10 rounded-full border border-zinc-200/80 bg-zinc-50"
-                    />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-zinc-900 group-hover:text-teal-700">
-                        {agent.name}
-                      </p>
-                      <p className="truncate text-xs text-zinc-500">
-                        {agent.instructions?.slice(0, 60) || "Ready for chat"}...
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-50 text-zinc-400 transition group-hover:bg-teal-50 group-hover:text-teal-700">
-                    <MessageSquare className="size-4" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Prebuilt Bots Grid */}
         <div>
           <div className="mb-4">
