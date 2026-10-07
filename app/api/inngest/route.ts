@@ -5,6 +5,7 @@ import {
   dailySyncScheduledJob,
   marketingInboxMonitorJob,
   onDemandInboxPollJob,
+  weeklyMarketDigestJob,
 } from "@/lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
@@ -14,5 +15,7 @@ export const { GET, POST, PUT } = serve({
     dailySyncScheduledJob,
     marketingInboxMonitorJob,
     onDemandInboxPollJob,
+    weeklyMarketDigestJob,
   ],
 });
+

@@ -23,13 +23,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "agentId is required" }, { status: 400 });
     }
 
-    // Verify agent ownership
     const [agent] = await db
       .select()
       .from(agents)
-      .where(
-        and(eq(agents.id, agentId), eq(agents.userEmail, session.user.email))
-      );
+      .where(eq(agents.id, agentId!));
 
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });

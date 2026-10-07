@@ -3,13 +3,102 @@
 import React from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
-  const {data:session}=useSession()
-  console.log("the data is",session);
+  const { data: session } = useSession();
+  const router = useRouter();
+
   return (
-    <div className="">
-      hello world
+    <div style={styles.wrapper}>
+      <div style={styles.glowTopLeft} />
+      <div style={styles.glowTopRight} />
+
+      {/* Navigation */}
+      <nav style={styles.navbar}>
+        <div style={styles.navContainer}>
+          <Link href="/" style={styles.brand}>
+            <div style={styles.brandIcon}>O</div>
+            <span style={styles.brandText}>Orbit AI</span>
+            <span style={styles.brandVersion}>v2.4 Enterprise</span>
+          </Link>
+
+
+
+          <div style={styles.navAuth}>
+            <Link href="/sign-in" style={styles.signInBtn}>
+              Sign In
+            </Link>
+            <Link href="/sign-up" style={styles.getStartedNavBtn}>
+              Get Started
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section style={styles.heroSection}>
+        <div style={styles.heroBadge}>
+          <div style={styles.badgePulse} />
+          <span>Next-Generation Multi-Agent AI Platform</span>
+        </div>
+
+        <h1 style={styles.heroTitle}>
+          Empower Teams with <span style={styles.gradientText}>Intelligent AI Bots</span>
+        </h1>
+
+        <p style={styles.heroSubtitle}>
+          Build, customize, and orchestrate specialized AI agents connected to your enterprise data, automated workflows, and team tools.
+        </p>
+
+        <div style={styles.ctaGroup}>
+          <button onClick={() => session ? router.push('/workspace') : router.push('/sign-in')} style={styles.primaryCta}>
+            Enter Workspace
+          </button>
+          <button onClick={() => session ? router.push('/workspace/create-agent') : router.push('/sign-in')} style={styles.secondaryCta}>
+            Create New Bot
+          </button>
+        </div>
+
+        {/* Feature Cards Grid */}
+        <div style={{ ...styles.featuresGrid, marginTop: '3rem', width: '100%' }}>
+          <div style={styles.featureCard}>
+            <div style={styles.featureIconBox}>🤖</div>
+            <h3 style={styles.featureTitle}>Specialized AI Agents</h3>
+            <p style={styles.featureDescription}>
+              Tailored autonomous bots equipped with unique instructions, custom knowledge bases, and executive capabilities.
+            </p>
+            <span style={styles.featureTag}>Multi-Agent</span>
+          </div>
+
+          <div style={styles.featureCard}>
+            <div style={styles.featureIconBox}>⚡</div>
+            <h3 style={styles.featureTitle}>Native Connectors</h3>
+            <p style={styles.featureDescription}>
+              Seamless integrations with Gmail, Slack, web search, vector knowledge bases, and enterprise systems.
+            </p>
+            <span style={styles.featureTag}>Connected</span>
+          </div>
+
+          <div style={styles.featureCard}>
+            <div style={styles.featureIconBox}>🛡️</div>
+            <h3 style={styles.featureTitle}>Enterprise Security</h3>
+            <p style={styles.featureDescription}>
+              Role-based access control, automated audit logging, credential management, and privacy-first AI pipelines.
+            </p>
+            <span style={styles.featureTag}>Secure</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={styles.footer}>
+        <div style={styles.footerContainer}>
+          <p style={styles.footerCopyright}>
+            © {new Date().getFullYear()} Orbit Multi-Agent Platform. All rights reserved.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

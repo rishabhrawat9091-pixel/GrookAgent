@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { db } from "@/db";
-import { agentConnectors, agents } from "@/db/schema";
+import { agentConnectors, agents, users } from "@/db/schema";
 
 /** POST /api/connector — save (upsert) connector credentials for an agent */
 export async function POST(req: NextRequest) {
@@ -12,6 +12,20 @@ export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify admin role
+    const [currentUser] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.email, session.user.email.toLowerCase().trim()));
+
+    const userRole = currentUser?.role || (session.user as any)?.role || "employee";
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        { error: "Access denied. Only administrators have permission to modify bot connectors." },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -28,16 +42,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify the agent belongs to this user
+    // Verify the agent exists
     const [agent] = await db
       .select()
       .from(agents)
-      .where(
-        and(
-          eq(agents.id, agentId),
-          eq(agents.userEmail, session.user.email)
-        )
-      );
+      .where(eq(agents.id, agentId));
 
     if (!agent) {
       return NextResponse.json(
@@ -124,16 +133,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Verify the agent belongs to this user
+    // Verify the agent exists
     const [agent] = await db
       .select()
       .from(agents)
-      .where(
-        and(
-          eq(agents.id, agentId),
-          eq(agents.userEmail, session.user.email)
-        )
-      );
+      .where(eq(agents.id, agentId));
 
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
@@ -164,6 +168,20 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Verify admin role
+    const [currentUser] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.email, session.user.email.toLowerCase().trim()));
+
+    const userRole = currentUser?.role || (session.user as any)?.role || "employee";
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        { error: "Access denied. Only administrators have permission to modify bot connectors." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const agentId = searchParams.get("agentId");
     const connectorType = searchParams.get("connectorType");
@@ -175,16 +193,11 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Verify the agent belongs to this user
+    // Verify the agent exists
     const [agent] = await db
       .select()
       .from(agents)
-      .where(
-        and(
-          eq(agents.id, agentId),
-          eq(agents.userEmail, session.user.email)
-        )
-      );
+      .where(eq(agents.id, agentId));
 
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });

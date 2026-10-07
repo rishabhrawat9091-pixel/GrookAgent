@@ -9,21 +9,18 @@ export interface EmbeddingOptions {
   model?: string;
 }
 
-/**
- * Normalizes Hugging Face featureExtraction outputs into a 1D vector (number[]).
- * Supports both direct 1D vectors and mean-pooled 2D token arrays.
- */
+
 function normalizeToVector(raw: unknown): number[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     return [];
   }
 
-  // Case 1: Already a 1D vector [number, number, ...]
+
   if (typeof raw[0] === "number") {
     return raw as number[];
   }
 
-  // Case 2: 2D token embeddings [tokens, dimensions] -> perform mean pooling
+
   if (Array.isArray(raw[0]) && typeof raw[0][0] === "number") {
     const tokenMatrix = raw as number[][];
     const numTokens = tokenMatrix.length;
@@ -42,17 +39,6 @@ function normalizeToVector(raw: unknown): number[] {
   return [];
 }
 
-/**
- * Generates vector embeddings using Hugging Face's InferenceClient.
- *
- * Supports flexible calling patterns:
- * 1. embedding(chunks, { model, token })
- * 2. embedding({ chunks, model, token })
- *
- * @param chunksOrParams - Array of string chunks or configuration object
- * @param options - Optional override for token and model
- * @returns Array of embedding vectors (number[][])
- */
 export async function embedding(
   chunksOrParams: string[] | EmbeddingOptions,
   options?: { token?: string; model?: string }
@@ -84,10 +70,8 @@ export async function embedding(
       process.env.HUGGINGFACE_EMBEDDING_MODEL ||
       DEFAULT_EMBEDDING_MODEL;
 
-    // InferenceClient constructor expects (accessToken?: string)
     const hf = new InferenceClient(apiKey);
 
-    // Sanitize chunks: replace empty or whitespace-only strings to prevent API errors
     const sanitizedChunks = chunks.map((chunk) => {
       const trimmed = chunk?.trim();
       return trimmed && trimmed.length > 0 ? trimmed : " ";
@@ -110,7 +94,7 @@ export async function embedding(
       );
 
       if (Array.isArray(response)) {
-        // If single chunk was sent and a 1D vector was returned directly
+
         if (batch.length === 1 && typeof response[0] === "number") {
           allEmbeddings.push(response as number[]);
         } else {
